@@ -150,17 +150,18 @@ expect(blocks.slice(start, start + 7)).toEqual([
 { type: "text", text: "[[アンカーリンク]]" },
 { type: "itemTitle", text: "2. 手袋" },
 ]);
-// numbering restarts per genre, and URL-less items get a numbered line too
+// numbering runs across genres without restarting, and URL-less
+// items get a numbered line too
 const clothesStart = blocks.findIndex(
 (b) => b.type === "heading2" && b.text === "服"
 );
 expect(blocks[clothesStart + 2]).toEqual({
 type: "itemTitle",
-text: "1. スリッポン",
+text: "3. スリッポン",
 });
 expect(blocks[clothesStart + 5]).toEqual({
 type: "itemTitle",
-text: "2. メモ帳（¥100） 予備",
+text: "4. メモ帳（¥100） 予備",
 });
 });
 
@@ -197,7 +198,7 @@ it("falls back to the full text line for items without a URL", () => {
 const blocks = buildListArticleBlocks(itemsByTab, []);
 expect(blocks).toContainEqual({
 type: "itemTitle",
-text: "2. メモ帳（¥100） 予備",
+text: "4. メモ帳（¥100） 予備",
 });
 });
 
