@@ -447,24 +447,27 @@ const buildListArticleBlocks = (itemsByTab, subscriptions) => {
       });
   });
 
+  let itemNumber = 0;
   genreOrder.forEach(genre => {
     push('heading2', genre);
     push('toc');
-    // Each item's name, numbered within the genre, sits directly above
-    // its card as a bold paragraph — deliberately NOT a heading, so
-    // the article's [[目次]] TOCs (one per genre, from the 'toc' block
-    // above) list the genres only, not every item. The comment
-    // follows below the card, and the entry closes with the
-    // [[アンカーリンク]] marker bound to the bold name.
-    byGenre.get(genre).forEach((item, idx) => {
+    // Each item's name, numbered with one running sequence across
+    // all genres, sits directly above its card as a bold paragraph —
+    // deliberately NOT a heading, so the article's [[目次]] TOCs
+    // (one per genre, from the 'toc' block above) list the genres
+    // only, not every item. The comment follows below the card, and
+    // the entry closes with the [[アンカーリンク]] marker bound to
+    // the bold name.
+    byGenre.get(genre).forEach(item => {
+      itemNumber += 1;
       const { name: title } = splitTitle(item.title);
       const url = String(item.url ?? '').trim();
       if (!url) {
-        push('itemTitle', `${idx + 1}. ${buildItemLine({ ...item, title })}`);
+        push('itemTitle', `${itemNumber}. ${buildItemLine({ ...item, title })}`);
         push('text', '[[アンカーリンク]]');
         return;
       }
-      push('itemTitle', `${idx + 1}. ${title}`);
+      push('itemTitle', `${itemNumber}. ${title}`);
       // A flagged （整理対象） item gets the blog-wide
       // [[画像グレーアウト]] marker right before its link, so its
       // card grays out on the front-ends, like a cancelled
