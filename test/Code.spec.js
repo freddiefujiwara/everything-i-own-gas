@@ -50,7 +50,11 @@ global.Logger = {
 global.PropertiesService = {
   getScriptProperties: vi.fn(() => ({
     getProperty: vi.fn(
-      (name) => ({ DATA_BASE_URL: "http://home-api.example" })[name] || null
+      (name) =>
+        ({
+          DATA_BASE_URL: "http://home-api.example",
+          ROOM_USER_ID: "room-user-1",
+        })[name] || null
     ),
   })),
 };
@@ -393,17 +397,28 @@ describe("crawlRoom", () => {
     mockCache.removeAll.mockImplementationOnce(() => {
       throw new Error("cache remove failed");
     });
-    mockUrlFetchApp.fetch.mockReturnValueOnce({
-      getContentText: () => JSON.stringify({ data: [] }),
-    });
+    mockUrlFetchApp.fetch
+      .mockReturnValueOnce({
+        getContentText: () =>
+          JSON.stringify({ data: [{ id: 1, name: "collection1" }] }),
+      })
+      .mockReturnValueOnce({
+        getContentText: () => JSON.stringify({ data: [] }),
+      });
 
     expect(() => crawlRoom()).not.toThrow();
   });
 
   it("should handle empty collections", () => {
-    mockUrlFetchApp.fetch.mockReturnValueOnce({
-      getContentText: () => JSON.stringify({ data: [] }),
-    });
+    // Empty collections from the ROOM API count as a direct-fetch
+    // failure, so the fallback is asked too; it is empty as well.
+    mockUrlFetchApp.fetch
+      .mockReturnValueOnce({
+        getContentText: () => JSON.stringify({ data: [] }),
+      })
+      .mockReturnValueOnce({
+        getContentText: () => JSON.stringify({ data: [] }),
+      });
 
     crawlRoom();
 
@@ -469,9 +484,15 @@ describe("crawlRoom", () => {
   });
 
   it("should handle collections API with no data property", () => {
-    mockUrlFetchApp.fetch.mockReturnValueOnce({
-      getContentText: () => JSON.stringify({ message: "error" }),
-    });
+    // No data property means no collections, which fails the direct
+    // fetch; the fallback answers the same way.
+    mockUrlFetchApp.fetch
+      .mockReturnValueOnce({
+        getContentText: () => JSON.stringify({ message: "error" }),
+      })
+      .mockReturnValueOnce({
+        getContentText: () => JSON.stringify({ message: "error" }),
+      });
     crawlRoom();
     expect(mockRange.setValues).not.toHaveBeenCalled();
   });
@@ -526,9 +547,13 @@ describe("crawlRoom", () => {
 
   it("should clear content when sheet has existing data", () => {
     mockSheet.getLastRow.mockReturnValue(2); // Simulate existing data
-    mockUrlFetchApp.fetch.mockReturnValueOnce({
-      getContentText: () => JSON.stringify({ data: [] }),
-    });
+    mockUrlFetchApp.fetch
+      .mockReturnValueOnce({
+        getContentText: () => JSON.stringify({ data: [] }),
+      })
+      .mockReturnValueOnce({
+        getContentText: () => JSON.stringify({ data: [] }),
+      });
 
     crawlRoom();
 
@@ -552,6 +577,138 @@ describe("crawlRoom", () => {
     expect(() => crawlRoom()).toThrow();
     expect(mockRange.clearContent).not.toHaveBeenCalled();
     expect(mockRange.setValues).not.toHaveBeenCalled();
+  });
+
+  it("should fetch directly from the ROOM API when it works", () => {
+    mockUrlFetchApp.fetch
+      .mockReturnValueOnce({
+        getContentText: () =>
+          JSON.stringify({ data: [{ id: 1, name: "collection1" }] }),
+      })
+      .mockReturnValueOnce({
+        getContentText: () =>
+          JSON.stringify({
+            data: [
+              {
+                item: {
+                  name: "Test Item",
+                  picture: { url: "http://example.com/test.jpg" },
+                  url: "http://example.com/item",
+                  price: 1000,
+                },
+                content: "Test comment",
+              },
+            ],
+          }),
+      });
+
+    crawlRoom();
+
+    const urls = mockUrlFetchApp.fetch.mock.calls.map(([url]) => url);
+    expect(urls).toEqual([
+      "https://room.rakuten.co.jp/api/room-user-1/collections",
+      "https://room.rakuten.co.jp/api/1/collects?limit=100",
+    ]);
+    expect(mockRange.setValues).toHaveBeenCalledWith([
+      [
+        "Test Item",
+        "http://example.com/test.jpg",
+        "http://example.com/item",
+        1000,
+        1,
+        "collection1",
+        "Test comment",
+      ],
+    ]);
+    expect(Logger.log).toHaveBeenCalledWith("source: room-api");
+  });
+
+  it("should fall back to the home data server when the ROOM API fetch fails", () => {
+    mockUrlFetchApp.fetch
+      .mockImplementationOnce(() => {
+        throw new Error("network error");
+      })
+      .mockReturnValueOnce({
+        getContentText: () =>
+          JSON.stringify({ data: [{ id: 1, name: "collection1" }] }),
+      })
+      .mockReturnValueOnce({
+        getContentText: () =>
+          JSON.stringify({
+            data: [
+              {
+                item: {
+                  name: "Test Item",
+                  picture: { url: "http://example.com/test.jpg" },
+                  url: "http://example.com/item",
+                  price: 1000,
+                },
+                content: "Test comment",
+              },
+            ],
+          }),
+      });
+
+    crawlRoom();
+
+    const urls = mockUrlFetchApp.fetch.mock.calls.map(([url]) => url);
+    expect(urls).toEqual([
+      "https://room.rakuten.co.jp/api/room-user-1/collections",
+      "http://home-api.example/collections.json",
+      "http://home-api.example/collects_1.json",
+    ]);
+    expect(mockRange.setValues).toHaveBeenCalledWith([
+      [
+        "Test Item",
+        "http://example.com/test.jpg",
+        "http://example.com/item",
+        1000,
+        1,
+        "collection1",
+        "Test comment",
+      ],
+    ]);
+    expect(Logger.log).toHaveBeenCalledWith("source: fallback (a.ze.gs)");
+  });
+
+  it("should leave the sheet untouched when both the ROOM API and the fallback fail", () => {
+    mockSheet.getLastRow.mockReturnValue(2); // Simulate existing data
+    mockUrlFetchApp.fetch
+      .mockImplementationOnce(() => {
+        throw new Error("ROOM API down");
+      })
+      .mockImplementationOnce(() => {
+        throw new Error("fallback down");
+      });
+
+    expect(() => crawlRoom()).toThrow();
+    expect(mockRange.clearContent).not.toHaveBeenCalled();
+    expect(mockRange.setValues).not.toHaveBeenCalled();
+  });
+
+  it("should use the fallback when ROOM_USER_ID is not set", () => {
+    global.PropertiesService.getScriptProperties.mockReturnValue({
+      getProperty: vi.fn(
+        (name) => ({ DATA_BASE_URL: "http://home-api.example" })[name] || null
+      ),
+    });
+    mockUrlFetchApp.fetch
+      .mockReturnValueOnce({
+        getContentText: () =>
+          JSON.stringify({ data: [{ id: 1, name: "collection1" }] }),
+      })
+      .mockReturnValueOnce({
+        getContentText: () => JSON.stringify({ data: [] }),
+      });
+
+    crawlRoom();
+
+    const urls = mockUrlFetchApp.fetch.mock.calls.map(([url]) => url);
+    expect(urls).toEqual([
+      "http://home-api.example/collections.json",
+      "http://home-api.example/collects_1.json",
+    ]);
+    expect(Logger.log).toHaveBeenCalledWith("source: fallback (a.ze.gs)");
   });
 });
 

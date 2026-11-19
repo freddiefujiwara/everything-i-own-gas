@@ -60,10 +60,17 @@ This project uses Node.js and npm for local testing and building.
 
 ## Script properties
 
+- `ROOM_USER_ID`: Rakuten ROOM user ID. `crawlRoom` fetches
+  collections and collects directly from the Rakuten ROOM API
+  (`https://room.rakuten.co.jp/api/...`). The value is not in this
+  repository, so it is set in the Apps Script project's script
+  properties.
 - `DATA_BASE_URL`: base URL of the home data server that hosts
-  `collections.json` and `collects_<id>.json`. The value is private
-  and is not in this repository, so it is set in the Apps Script
-  project's script properties.
+  `collections.json` and `collects_<id>.json`. `crawlRoom` uses it
+  only as a fallback when the direct ROOM API fetch fails (or
+  `ROOM_USER_ID` is unset). The value is private and is not in this
+  repository, so it is set in the Apps Script project's script
+  properties.
 
 ## Staging environment
 
@@ -76,4 +83,5 @@ spreadsheet by setting a script property on the staging project:
   production.
 
 The staging project has no triggers (in particular, `crawlRoom` never
-runs there) and does not need the `DATA_BASE_URL` property.
+runs there) and does not need the `DATA_BASE_URL` or `ROOM_USER_ID`
+properties.
