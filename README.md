@@ -50,7 +50,7 @@ This project uses Node.js and npm for local testing and building.
     ```bash
     npm run build
     ```
-    This command takes the source code from `src/Code.js` and creates a Google Apps Script compatible file at `dist/Code.gs`.
+    This command takes the source modules listed in `src/Code.js` and creates a Google Apps Script compatible file at `dist/Code.gs`.
 
 -   **Deploy the script:**
     ```bash

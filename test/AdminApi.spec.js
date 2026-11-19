@@ -1,15 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { normalizeItemRow_, readAdminItems_ } from "../src/admin.js";
 import {
-  doPost,
   issueOwnerSession_,
   issueShareSession_,
-  normalizeItemRow_,
-  readAdminItems_,
   revokeShareSession_,
   validateOwnerToken_,
   validateShareToken_,
   verifyIdToken_,
-} from "../src/Code.js";
+} from "../src/auth.js";
+import { doPost } from "../src/main.js";
 
 const HEADER = ["title", "image", "url", "price", "unit", "genre", "comment"];
 const SHARE_HEADER = [

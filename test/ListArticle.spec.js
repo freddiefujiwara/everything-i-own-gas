@@ -7,7 +7,7 @@ import {
   normalizeArticleUrl,
   setupListArticleTrigger,
   splitTitle,
-} from "../src/Code.js";
+} from "../src/article.js";
 
 describe("buildItemLine", () => {
 it("formats title, price, unit and comment", () => {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { crawlRoom, doGet } from "../src/Code.js";
+import { doGet } from "../src/main.js";
+import { crawlRoom } from "../src/room.js";
 
 // Mockup of Google Apps Script global objects
 const mockRange = {
