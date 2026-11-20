@@ -18,7 +18,7 @@ const clearSheet = (sh = getSheet('room')) => {
 // Rakuten's image servers resize on the fly via an _ex=WxH query, so
 // the sheet stores the resized URL: card thumbnails (a few hundred px
 // wide) stop downloading the full-size product photo, and readers of
-// the sheet — the list-of-stuff front-end included — need no
+// the sheet — the everything-i-own front-end included — need no
 // host-specific handling of their own. URLs on other hosts, and URLs
 // that already carry a query string, are stored unchanged.
 const rakutenThumbnailUrl = url => {

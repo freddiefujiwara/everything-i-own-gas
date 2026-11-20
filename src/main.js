@@ -29,7 +29,7 @@ import {
 } from './subscriptions.js';
 
 // ---------------------------------------------------------------------------
-// Admin API (doPost) for the list-of-stuff-admin site.
+// Admin API (doPost) for the everything-i-own-admin site.
 //
 // The room sheet is rewritten by crawlRoom() from Rakuten ROOM, so the
 // admin API manages the hand-edited sheets: the item sheets (workman,
