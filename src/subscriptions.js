@@ -56,11 +56,29 @@ const readSubscriptions_ = () => {
 // side becomes the deriving formula, like the sheet's own rows.
 const subscriptionCells_ = (sub, row, ratioFormula) => {
   const src = sub || {};
-  const text = v => (v === null || v === undefined ? '' : String(v));
+  // Text reads totally, like the item rows: a value whose String()
+  // throws reads as blank instead of failing the whole mutation.
+  const text = v => {
+    if (v === null || v === undefined) return '';
+    try {
+      return String(v);
+    } catch (e) {
+      return '';
+    }
+  };
+  // The amount is the entered cost: a finite number, or a string
+  // that parses as one. Anything else (a boolean, an array, an
+  // unstringifiable object) reads as no amount, like a blank cell —
+  // a bare Number() would store a boolean as 1 and an array as its
+  // single element.
   const amount =
-    src.amount === null || src.amount === undefined || String(src.amount).trim() === ''
-      ? ''
-      : isFinite(Number(src.amount))
+    typeof src.amount === 'number'
+      ? isFinite(src.amount)
+        ? src.amount
+        : ''
+      : typeof src.amount === 'string' &&
+          src.amount.trim() !== '' &&
+          isFinite(Number(src.amount))
         ? Number(src.amount)
         : '';
   let yearly = '';

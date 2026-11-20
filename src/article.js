@@ -27,13 +27,51 @@ const LIST_ARTICLE_DUMMY_DOC_PROPERTY = 'LIST_ARTICLE_DUMMY_DOC_ID';
 
 const LIST_ARTICLE_SHEETS = ['room', 'workman', 'variety', 'others'];
 
-// Format a price cell ("2029", 2029, "¥4,380") for display; blank or
-// non-numeric cells produce no price text.
-const formatItemPrice = value => {
-  if (value === null || value === undefined || String(value).trim() === '') {
+// Total text coercion for values that come from outside this code
+// (sheet cells, JSON payloads): null and absent read as empty, and a
+// value whose String() throws — an object with a non-callable
+// toString, which JSON.parse can produce — also reads as empty
+// instead of killing the shaping it flows through.
+const cellText_ = value => {
+  if (value === null || value === undefined) {
     return '';
   }
-  const n = Number(String(value).replace(/[^\d.-]/g, ''));
+  try {
+    return String(value);
+  } catch (e) {
+    return '';
+  }
+};
+
+// A number as a cell carries it: a finite number, or a string that
+// parses as one. Everything else (booleans, arrays, Dates, objects)
+// is not a number — a bare Number() would turn true into 1, [500]
+// into 500 and a Date into its concatenated digits.
+const cellNumber_ = value => {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    return Number(value);
+  }
+  return NaN;
+};
+
+// Format a price cell ("2029", 2029, "¥4,380") for display; blank or
+// non-numeric cells produce no price text. Only a number or a string
+// cell can carry a price: any other type (a boolean, a Date, an
+// object), and a string with no digits in it, produces no price text
+// either — the digit-stripping below would otherwise turn them into
+// a plausible-looking ¥0 or worse.
+const formatItemPrice = value => {
+  if (typeof value !== 'number' && typeof value !== 'string') {
+    return '';
+  }
+  const cleaned = String(value).replace(/[^\d.-]/g, '');
+  if (cleaned === '') {
+    return '';
+  }
+  const n = Number(cleaned);
   if (!isFinite(n)) {
     return '';
   }
@@ -43,18 +81,18 @@ const formatItemPrice = value => {
 // One display line for an item: title, price, unit (only when > 1) and
 // comment. Never any total.
 const buildItemLine = item => {
-  const title = String(item.title ?? '').trim();
+  const title = cellText_(item.title).trim();
   const details = [];
   const price = formatItemPrice(item.price);
   if (price) {
     details.push(price);
   }
-  const unit = Number(item.unit);
+  const unit = cellNumber_(item.unit);
   if (isFinite(unit) && unit > 1) {
     details.push(`×${unit}`);
   }
   const head = details.length ? `${title}（${details.join(' ')}）` : title;
-  const comment = String(item.comment ?? '').trim();
+  const comment = cellText_(item.comment).trim();
   return comment ? `${head} ${comment}` : head;
 };
 
@@ -63,9 +101,12 @@ const buildItemLine = item => {
 // standalone URL paragraphs, so they never become link cards. Encode
 // exactly the characters that break URL recognition — spaces and
 // non-ASCII — and leave everything else (including existing %XX
-// sequences) untouched.
+// sequences) untouched. The u flag matters: without it the character
+// class matches one UTF-16 code unit at a time, and
+// encodeURIComponent throws URIError on a lone surrogate half — one
+// emoji in a sheet URL killed the whole regeneration.
 const normalizeArticleUrl = url =>
-  String(url).replace(/ |[^\x00-\x7F]/g, ch =>
+  String(url).replace(/ |[^\x00-\x7F]/gu, ch =>
     ch === ' ' ? '%20' : encodeURIComponent(ch)
   );
 
@@ -122,7 +163,7 @@ const isPropertyToken = token => {
 const TITLE_NAME_SOFT_LIMIT = 30;
 
 const splitTitle = rawTitle => {
-  const title = String(rawTitle ?? '').trim();
+  const title = cellText_(rawTitle).trim();
   if (!title) {
     return { name: '', props: '' };
   }
@@ -188,9 +229,9 @@ const buildListArticleBlocks = (itemsByTab, subscriptions) => {
   const byGenre = new Map();
   LIST_ARTICLE_SHEETS.forEach(sheet => {
     (itemsByTab[sheet] || [])
-      .filter(item => String(item.title ?? '').trim() !== '')
+      .filter(item => cellText_(item.title).trim() !== '')
       .forEach(item => {
-        const genre = String(item.genre ?? '').trim() || 'その他';
+        const genre = cellText_(item.genre).trim() || 'その他';
         if (!byGenre.has(genre)) {
           byGenre.set(genre, []);
           genreOrder.push(genre);
@@ -213,7 +254,7 @@ const buildListArticleBlocks = (itemsByTab, subscriptions) => {
     byGenre.get(genre).forEach(item => {
       itemNumber += 1;
       const { name: title } = splitTitle(item.title);
-      const url = String(item.url ?? '').trim();
+      const url = cellText_(item.url).trim();
       if (!url) {
         push('itemTitle', `${itemNumber}. ${buildItemLine({ ...item, title })}`);
         push('text', '[[アンカーリンク]]');
@@ -224,11 +265,11 @@ const buildListArticleBlocks = (itemsByTab, subscriptions) => {
       // [[画像グレーアウト]] marker right before its link, so its
       // card grays out on the front-ends, like a cancelled
       // subscription's does.
-      if (String(item.flag ?? '').trim() === FLAG_VALUE) {
+      if (cellText_(item.flag).trim() === FLAG_VALUE) {
         push('text', '[[画像グレーアウト]]');
       }
       push('link', normalizeArticleUrl(url));
-      const comment = String(item.comment ?? '').trim();
+      const comment = cellText_(item.comment).trim();
       if (comment) {
         push('text', comment);
       }
@@ -239,18 +280,18 @@ const buildListArticleBlocks = (itemsByTab, subscriptions) => {
   push('heading2', 'サブスクリプション');
   push('toc');
   (subscriptions || []).forEach(({ name, purpose, url, flag }) => {
-    push('itemTitle', name);
-    const note = String(purpose ?? '').trim();
+    push('itemTitle', cellText_(name));
+    const note = cellText_(purpose).trim();
     if (note) {
       push('text', note);
     }
-    const clean = String(url ?? '').trim();
+    const clean = cellText_(url).trim();
     if (clean) {
       // A subscription whose purpose says it was cancelled, or that
       // carries the tidy-up flag, gets the blog-wide
       // [[画像グレーアウト]] marker right before its link, so
       // blog-gas flags the card and the front-ends gray it out.
-      if (note.includes('解約') || String(flag ?? '').trim() === FLAG_VALUE) {
+      if (note.includes('解約') || cellText_(flag).trim() === FLAG_VALUE) {
         push('text', '[[画像グレーアウト]]');
       }
       push('link', normalizeArticleUrl(clean));
@@ -268,10 +309,10 @@ const extractSubscriptions = values => {
   const objects = sheetValuesToObjects(values.slice());
   return objects
     .map(obj => ({
-      name: String(obj.Service ?? '').trim(),
-      purpose: String(obj.Purpose ?? '').trim(),
-      url: String(obj.URL ?? '').trim(),
-      flag: String(obj.flag ?? '').trim(),
+      name: cellText_(obj.Service).trim(),
+      purpose: cellText_(obj.Purpose).trim(),
+      url: cellText_(obj.URL).trim(),
+      flag: cellText_(obj.flag).trim(),
     }))
     .filter(
       ({ name }) =>
