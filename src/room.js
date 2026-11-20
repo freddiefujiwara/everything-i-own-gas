@@ -8,6 +8,38 @@ import { clearItemsCache } from './items.js';
 
 const ROOM_API_BASE_URL = 'https://room.rakuten.co.jp/api';
 
+// A fetch payload's data: a missing data property (an error
+// payload like {"message": ...}) reads as an empty array, as it
+// always has. A data property that is present but not an array
+// means the source answered in a shape this import cannot use,
+// which counts as that source failing — crawlRoom falls back, or
+// keeps the previous sheet — instead of crashing deeper in the
+// row building.
+const dataArray_ = payload => {
+  const data = payload && payload.data;
+  if (data === null || data === undefined) {
+    return [];
+  }
+  if (!Array.isArray(data)) {
+    throw new Error('response data is not an array');
+  }
+  return data;
+};
+
+// Text as the sheet stores it: strings pass through and finite
+// numbers stringify, while anything else (arrays, booleans, objects
+// — including ones whose toString is not callable) reads as empty
+// rather than landing in a cell, where setValues would reject it.
+const roomText_ = value => {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' && isFinite(value)) {
+    return String(value);
+  }
+  return '';
+};
+
 const clearSheet = (sh = getSheet('room')) => {
   const lastRow = sh.getLastRow();
   if (lastRow > 1) {
@@ -34,25 +66,38 @@ const rakutenThumbnailUrl = url => {
 
 const createRow = (item, c, x) => {
   Logger.log(item.name);
+  // The price keeps the sheet's convention (a number or a string,
+  // blank when falsy); a price of any other type reads as blank.
+  const price =
+    typeof item.price === 'number' || typeof item.price === 'string'
+      ? item.price || ''
+      : '';
   return [
-    item.name || '',
-    rakutenThumbnailUrl(item.picture?.url || ''),
-    item.url || '',
-    item.price || '',
+    roomText_(item.name),
+    rakutenThumbnailUrl(roomText_(item.picture?.url)),
+    roomText_(item.url),
+    price,
     1,
-    c.name || '',
-    x.content || '',
+    roomText_(c.name),
+    roomText_(x.content),
   ];
 };
 
 // Turn a collections list into sheet rows. The two sources below
 // differ only in fetchCollects, which returns one collection's
-// collects array.
+// collects array. Entries that are not objects at all (a null in a
+// deformed payload) are skipped: one bad entry must not kill the
+// whole crawl, and a non-object collect has no item worth a blank
+// row in the sheet.
 const buildRows = (collections, fetchCollects) =>
-  collections.flatMap(c => {
-    Logger.log(c.name);
-    return fetchCollects(c.id).map(x => createRow(x.item || {}, c, x));
-  });
+  collections
+    .filter(c => c && typeof c === 'object')
+    .flatMap(c => {
+      Logger.log(c.name);
+      return fetchCollects(c.id)
+        .filter(x => x && typeof x === 'object')
+        .map(x => createRow(x.item || {}, c, x));
+    });
 
 // Direct fetch from the Rakuten ROOM API. The user ID lives in the
 // script property ROOM_USER_ID, not in this public source code. An
@@ -63,14 +108,14 @@ const fetchRoomApiRows = () => {
   if (!userId) {
     throw new Error('script property ROOM_USER_ID is not set');
   }
-  const collections =
-    fetchJson(`${ROOM_API_BASE_URL}/${userId}/collections`).data || [];
+  const collections = dataArray_(
+    fetchJson(`${ROOM_API_BASE_URL}/${userId}/collections`)
+  );
   if (!collections.length) {
     throw new Error('ROOM API returned no collections');
   }
-  return buildRows(
-    collections,
-    id => fetchJson(`${ROOM_API_BASE_URL}/${id}/collects?limit=100`).data || []
+  return buildRows(collections, id =>
+    dataArray_(fetchJson(`${ROOM_API_BASE_URL}/${id}/collects?limit=100`))
   );
 };
 
@@ -86,10 +131,9 @@ const dataBaseUrl_ = () => {
 
 const fetchFallbackRows = () => {
   const base = dataBaseUrl_();
-  const collections = fetchJson(`${base}/collections.json`).data || [];
-  return buildRows(
-    collections,
-    id => fetchJson(`${base}/collects_${id}.json`).data || []
+  const collections = dataArray_(fetchJson(`${base}/collections.json`));
+  return buildRows(collections, id =>
+    dataArray_(fetchJson(`${base}/collects_${id}.json`))
   );
 };
 

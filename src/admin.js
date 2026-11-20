@@ -114,11 +114,27 @@ const setItemFlag_ = (name, row, flagged) => {
 // stored as numbers when they parse as one, blank otherwise.
 const normalizeItemRow_ = item => {
   const src = item || {};
-  const text = v => (v === null || v === undefined ? '' : String(v));
+  // Text reads totally: a value whose String() throws (an object
+  // with a non-callable toString, producible via the JSON body)
+  // reads as blank instead of failing the whole mutation.
+  const text = v => {
+    if (v === null || v === undefined) return '';
+    try {
+      return String(v);
+    } catch (e) {
+      return '';
+    }
+  };
+  // Price and unit are stored as numbers only when the payload
+  // carries a number or a numeric string; a bare Number() would
+  // store a boolean as 1 and an array as its single element.
   const number = v => {
-    if (v === null || v === undefined || String(v).trim() === '') return '';
-    const n = Number(v);
-    return isFinite(n) ? n : '';
+    if (typeof v === 'number') return isFinite(v) ? v : '';
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v);
+      return isFinite(n) ? n : '';
+    }
+    return '';
   };
   return [
     text(src.title),
